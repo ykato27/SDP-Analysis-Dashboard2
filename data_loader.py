@@ -12,33 +12,25 @@ def load_all_data():
     """全データをロード"""
     data_dir = Path('data')
     
-    # 従業員マスタ
-    df_employee = pd.read_csv(data_dir / 'employee_master.csv', encoding='utf-8-sig')
+    # 従業員スキルデータ
+    df_employee = pd.read_csv(data_dir / 'employee_skill_data.csv', encoding='utf-8-sig')
     df_employee['評価日'] = pd.to_datetime(df_employee['評価日'])
     
     # 日次生産データ
-    df_production = pd.read_csv(data_dir / 'production_daily.csv', encoding='utf-8-sig')
+    df_production = pd.read_csv(data_dir / 'daily_production_data.csv', encoding='utf-8-sig')
     df_production['日付'] = pd.to_datetime(df_production['日付'])
     
-    # 日次シフト別平均スキル
-    df_daily_skills = pd.read_csv(data_dir / 'daily_shift_skills.csv', encoding='utf-8-sig')
-    df_daily_skills['日付'] = pd.to_datetime(df_daily_skills['日付'])
+    # 研修履歴データ
+    df_training = pd.read_csv(data_dir / 'training_history_data.csv', encoding='utf-8-sig')
+    df_training['受講日'] = pd.to_datetime(df_training['受講日'])
     
-    # 日次出勤データ（オプション）
-    df_attendance = pd.read_csv(data_dir / 'attendance_daily.csv', encoding='utf-8-sig')
-    df_attendance['日付'] = pd.to_datetime(df_attendance['日付'])
+    # ボトルネックデータ
+    df_bottleneck = pd.read_csv(data_dir / 'process_bottleneck_data.csv', encoding='utf-8-sig')
     
     # 拠点マスタ
-    df_location = pd.read_csv(data_dir / 'location_master.csv', encoding='utf-8-sig')
+    df_location = pd.read_csv(data_dir / 'location_master_data.csv', encoding='utf-8-sig')
     
-    # 生産データに日次スキルを結合
-    df_production_with_skills = df_production.merge(
-        df_daily_skills[['日付', '拠点', 'ライン', 'シフト', '平均スキルスコア', '出勤人数']],
-        on=['日付', '拠点', 'ライン', 'シフト'],
-        how='left'
-    )
-    
-    return df_employee, df_production_with_skills, df_daily_skills, df_attendance, df_location
+    return df_employee, df_production, df_training, df_bottleneck, df_location
 
 def get_skill_categories():
     """スキルカテゴリ定義を取得"""
@@ -117,19 +109,20 @@ def get_skill_distribution(df_employee, location, line=None):
     return skill_dist
 
 def calculate_skill_production_correlation(df_employee, df_production):
-    """スキルと生産性の相関分析（日次データ対応）"""
-    # 生産データにはすでに平均スキルスコアが含まれている（load_all_dataで結合済み）
-    # 従業員マスタのスキルもマージ（従来の機能との互換性のため）
+    """スキルと生産性の相関分析"""
+    # 従業員スキルの平均を計算
     skill_by_group = df_employee.groupby(['拠点', 'ライン', 'シフト']).agg({
         '総合スキルスコア': 'mean',
+        '操炉技術': 'mean',
+        '成分制御': 'mean',
+        '異常対応': 'mean',
+        '設備保全': 'mean',
+        '品質検査': 'mean',
+        '安全管理': 'mean',
     }).reset_index()
     
-    # 平均スキルスコアカラムがある場合はそれを使用、ない場合は従業員マスタから結合
-    if '平均スキルスコア' in df_production.columns:
-        merged = df_production.copy()
-        merged['総合スキルスコア'] = merged['平均スキルスコア']
-    else:
-        merged = df_production.merge(skill_by_group, on=['拠点', 'ライン', 'シフト'], how='left')
+    # 生産データと結合
+    merged = df_production.merge(skill_by_group, on=['拠点', 'ライン', 'シフト'], how='left')
     
     return merged
 
