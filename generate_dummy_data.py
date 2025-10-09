@@ -1,6 +1,6 @@
 """
-SDP (Skill Driven Production) ダッシュボード用ダミーデータ生成スクリプト
-高炉メーカーのグローバル拠点データを生成
+SDP (Skill Driven Production) ダッシュボード用ダミーデータ生成スクリプト v2
+日次出勤データを考慮したリアルなデータセット生成
 """
 
 import pandas as pd
@@ -66,8 +66,8 @@ def generate_employee_data(n_employees=2000):
             shift = random.choice(SHIFTS)
             
             # シフト・ラインによるスキル差異
-            shift_modifier = {'A班': 0.2, 'B班': 0.1, 'C班': -0.1, 'D班': -0.2}[shift]
-            line_modifier = np.random.uniform(-0.3, 0.3)
+            shift_modifier = {'A班': 0.2, 'B班': 0.3, 'C班': -0.1, 'D班': -0.3}[shift]
+            line_modifier = np.random.uniform(-0.2, 0.2)
             
             # 各スキルカテゴリのレベル生成
             skills = {}
@@ -84,10 +84,6 @@ def generate_employee_data(n_employees=2000):
             # 経験年数（スキルレベルと相関）
             experience_years = max(1, int(np.random.gamma(total_skill, 2)))
             
-            # 生産効率・品質への影響
-            efficiency = loc_info['efficiency_base'] + (total_skill - 3.0) * 8 + np.random.normal(0, 3)
-            quality_defect = loc_info['quality_base'] + (5.0 - total_skill) * 0.8 + abs(np.random.normal(0, 0.5))
-            
             data.append({
                 '従業員ID': f'EMP{employee_id:05d}',
                 '拠点': location,
@@ -98,123 +94,114 @@ def generate_employee_data(n_employees=2000):
                 '評価日': datetime.now().date(),
                 **skills,
                 '総合スキルスコア': round(total_skill, 2),
-                '生産効率_個人': round(efficiency, 1),
-                '品質不良率_個人': round(quality_defect, 2),
             })
             employee_id += 1
     
     return pd.DataFrame(data)
 
-def generate_production_data(days=180):
-    """日次生産データ生成"""
+def generate_attendance_data(df_employee, days=30):
+    """日次出勤データ生成（欠勤を考慮）"""
     data = []
     start_date = datetime.now() - timedelta(days=days)
     
-    for location, loc_info in LOCATIONS.items():
+    for _, emp in df_employee.iterrows():
         for day in range(days):
-            date = start_date + timedelta(days=day)
+            date = (start_date + timedelta(days=day)).date()
             
-            for line in LINES:
-                for shift in SHIFTS:
-                    # ベース生産性
-                    base_efficiency = loc_info['efficiency_base']
-                    base_quality = loc_info['quality_base']
-                    base_safety = loc_info['safety_base']
-                    
-                    # 時系列トレンド（改善傾向）
-                    trend = day / days * 5 if not loc_info['benchmark'] else 0
-                    
-                    # ランダム変動
-                    daily_var = np.random.normal(0, 3)
-                    
-                    # 生産効率（t/h換算）
-                    efficiency = base_efficiency + trend + daily_var
-                    efficiency = np.clip(efficiency, 50, 120)
-                    
-                    # 品質不良率
-                    quality_defect = base_quality - trend * 0.1 + abs(np.random.normal(0, 0.3))
-                    quality_defect = max(0.1, quality_defect)
-                    
-                    # 労災発生（確率的）
-                    accident = 1 if np.random.random() < base_safety / 100 else 0
-                    
-                    # 生産量
-                    production_volume = efficiency * 24 * random.uniform(0.9, 1.0)
-                    
-                    data.append({
-                        '日付': date.date(),
-                        '拠点': location,
-                        '国': loc_info['country'],
-                        'ライン': line,
-                        'シフト': shift,
-                        '生産量_ton': round(production_volume, 1),
-                        '生産効率_指数': round(efficiency, 1),
-                        '品質不良率': round(quality_defect, 2),
-                        '労災発生': accident,
-                        '稼働率': round(random.uniform(85, 98), 1),
-                        '歩留まり': round(random.uniform(94, 99.5), 1),
-                    })
+            # 出勤確率（ベース90%）
+            # スキルが高い人ほど出勤率が高い傾向
+            attendance_prob = 0.85 + (emp['総合スキルスコア'] - 3.0) * 0.03
+            attendance_prob = np.clip(attendance_prob, 0.75, 0.98)
+            
+            is_attended = np.random.random() < attendance_prob
+            
+            data.append({
+                '従業員ID': emp['従業員ID'],
+                '拠点': emp['拠点'],
+                'ライン': emp['ライン'],
+                'シフト': emp['シフト'],
+                '日付': date,
+                '出勤': is_attended,
+                '総合スキルスコア': emp['総合スキルスコア'],
+            })
     
     return pd.DataFrame(data)
 
-def generate_training_data(n_records=500):
-    """教育・訓練履歴データ生成"""
-    data = []
-    training_programs = [
-        '高炉操業基礎', '成分制御実践', '異常対応訓練', '設備保全コース',
-        '品質管理手法', '安全作業手順', '5S活動', 'トラブルシューティング'
-    ]
+def calculate_daily_shift_skills(df_attendance):
+    """日次・シフト別の平均スキル計算（出勤者のみ）"""
+    # 出勤者のみをフィルタ
+    df_attended = df_attendance[df_attendance['出勤'] == True].copy()
     
-    for _ in range(n_records):
-        training_date = datetime.now() - timedelta(days=random.randint(0, 365))
+    # 日付・拠点・ライン・シフト単位で平均スキルを計算
+    daily_skills = df_attended.groupby(['日付', '拠点', 'ライン', 'シフト']).agg({
+        '総合スキルスコア': 'mean',
+        '従業員ID': 'count'  # 出勤人数
+    }).reset_index()
+    
+    daily_skills.columns = ['日付', '拠点', 'ライン', 'シフト', '平均スキルスコア', '出勤人数']
+    
+    return daily_skills
+
+def generate_production_data_with_skills(df_daily_skills):
+    """日次生産データ生成（スキルと連動）"""
+    data = []
+    
+    for _, row in df_daily_skills.iterrows():
+        date = row['日付']
+        location = row['拠点']
+        line = row['ライン']
+        shift = row['シフト']
+        skill = row['平均スキルスコア']
+        n_workers = row['出勤人数']
+        
+        loc_info = LOCATIONS[location]
+        
+        # スキルと出勤人数による生産効率への影響
+        base_efficiency = loc_info['efficiency_base']
+        
+        # スキル影響（相関を強くする）
+        skill_impact = (skill - 3.0) * 10  # スキル1上昇で+10ポイント
+        
+        # 出勤人数の影響（少なすぎると効率低下）
+        worker_impact = 0
+        if n_workers < 3:
+            worker_impact = -5 * (3 - n_workers)
+        
+        # ランダムノイズ（日々の変動）
+        daily_noise = np.random.normal(0, 2)
+        
+        efficiency = base_efficiency + skill_impact + worker_impact + daily_noise
+        efficiency = np.clip(efficiency, 50, 120)
+        
+        # 品質不良率（スキルが高いほど低い、負の相関）
+        base_quality = loc_info['quality_base']
+        quality_impact = (5.0 - skill) * 0.5  # スキル1上昇で-0.5%
+        quality_noise = abs(np.random.normal(0, 0.3))
+        
+        quality_defect = base_quality + quality_impact + quality_noise
+        quality_defect = np.clip(quality_defect, 0.1, 10.0)
+        
+        # 稼働率・歩留まり
+        utilization = 85 + np.random.uniform(-10, 15)
+        yield_rate = 92 + np.random.uniform(-5, 8)
         
         data.append({
-            '受講日': training_date.date(),
-            '従業員ID': f'EMP{random.randint(1000, 3000):05d}',
-            '研修プログラム': random.choice(training_programs),
-            '受講時間': random.choice([8, 16, 24, 40]),
-            '理解度テスト': round(random.uniform(60, 100), 1),
-            '実技評価': round(random.uniform(1, 5), 1),
-            'コスト_円': random.choice([50000, 100000, 150000, 200000]),
+            '日付': date,
+            '拠点': location,
+            'ライン': line,
+            'シフト': shift,
+            '生産効率_指数': round(efficiency, 1),
+            '品質不良率': round(quality_defect, 2),
+            '稼働率': round(utilization, 1),
+            '歩留まり': round(yield_rate, 1),
+            '出勤人数': n_workers,
         })
     
     return pd.DataFrame(data)
 
-def generate_process_bottleneck_data():
-    """工程別スキルボトルネックデータ生成"""
-    data = []
-    
-    for location in LOCATIONS.keys():
-        for process in PROCESSES:
-            for skill in SKILL_CATEGORIES.keys():
-                # 要求スキルレベル
-                required_skill = random.uniform(3.5, 4.5)
-                
-                # 現在の保有スキルレベル
-                current_skill = required_skill - random.uniform(-0.5, 1.5)
-                current_skill = max(1.0, current_skill)
-                
-                # ギャップ
-                gap = required_skill - current_skill
-                
-                data.append({
-                    '拠点': location,
-                    '工程': process,
-                    'スキルカテゴリ': skill,
-                    '要求レベル': round(required_skill, 1),
-                    '現在レベル': round(current_skill, 1),
-                    'スキルギャップ': round(gap, 1),
-                    '影響度_生産': SKILL_CATEGORIES[skill]['impact_efficiency'],
-                    '影響度_品質': SKILL_CATEGORIES[skill]['impact_quality'],
-                    '影響度_安全': SKILL_CATEGORIES[skill]['impact_safety'],
-                })
-    
-    return pd.DataFrame(data)
-
-def generate_location_master():
+def generate_location_data():
     """拠点マスタデータ生成"""
     data = []
-    
     for location, info in LOCATIONS.items():
         data.append({
             '拠点': location,
@@ -222,33 +209,72 @@ def generate_location_master():
             '緯度': info['lat'],
             '経度': info['lon'],
             'ベンチマーク拠点': info['benchmark'],
-            '稼働開始年': random.randint(1970, 2020),
-            '従業員数': random.randint(200, 500),
-            '高炉数': random.randint(1, 3),
+            '設立年': random.randint(1960, 2010),
         })
-    
     return pd.DataFrame(data)
 
-if __name__ == '__main__':
-    print("SDP ダミーデータ生成開始...")
+def main():
+    """メインデータ生成"""
+    print("📊 SDP ダミーデータ生成開始 (v2 - 日次出勤対応)")
     
-    # データ生成
-    df_employee = generate_employee_data(2000)
-    df_production = generate_production_data(180)
-    df_training = generate_training_data(500)
-    df_bottleneck = generate_process_bottleneck_data()
-    df_location = generate_location_master()
+    # 1. 従業員データ生成
+    print("1️⃣ 従業員データ生成中...")
+    df_employee = generate_employee_data(n_employees=2000)
+    print(f"   ✅ 従業員数: {len(df_employee)}")
     
-    # CSV保存
-    df_employee.to_csv('data/employee_skill_data.csv', index=False, encoding='utf-8-sig')
-    df_production.to_csv('data/daily_production_data.csv', index=False, encoding='utf-8-sig')
-    df_training.to_csv('data/training_history_data.csv', index=False, encoding='utf-8-sig')
-    df_bottleneck.to_csv('data/process_bottleneck_data.csv', index=False, encoding='utf-8-sig')
-    df_location.to_csv('data/location_master_data.csv', index=False, encoding='utf-8-sig')
+    # 2. 日次出勤データ生成
+    print("2️⃣ 日次出勤データ生成中（30日分）...")
+    df_attendance = generate_attendance_data(df_employee, days=30)
+    print(f"   ✅ 出勤レコード数: {len(df_attendance)}")
+    attendance_rate = df_attendance['出勤'].mean() * 100
+    print(f"   📈 平均出勤率: {attendance_rate:.1f}%")
     
-    print(f"✅ 従業員データ: {len(df_employee)} 件")
-    print(f"✅ 生産データ: {len(df_production)} 件")
-    print(f"✅ 研修データ: {len(df_training)} 件")
-    print(f"✅ ボトルネックデータ: {len(df_bottleneck)} 件")
-    print(f"✅ 拠点マスタ: {len(df_location)} 件")
-    print("\nデータ生成完了！")
+    # 3. 日次・シフト別平均スキル計算
+    print("3️⃣ 日次シフト別スキル計算中...")
+    df_daily_skills = calculate_daily_shift_skills(df_attendance)
+    print(f"   ✅ 日次シフトレコード数: {len(df_daily_skills)}")
+    
+    # 4. 生産データ生成（スキルと連動）
+    print("4️⃣ 生産データ生成中...")
+    df_production = generate_production_data_with_skills(df_daily_skills)
+    print(f"   ✅ 生産レコード数: {len(df_production)}")
+    
+    # 5. 拠点マスタ生成
+    print("5️⃣ 拠点マスタ生成中...")
+    df_location = generate_location_data()
+    print(f"   ✅ 拠点数: {len(df_location)}")
+    
+    # データ保存
+    print("\n💾 データ保存中...")
+    df_employee.to_csv('data/employee_master.csv', index=False, encoding='utf-8-sig')
+    df_attendance.to_csv('data/attendance_daily.csv', index=False, encoding='utf-8-sig')
+    df_daily_skills.to_csv('data/daily_shift_skills.csv', index=False, encoding='utf-8-sig')
+    df_production.to_csv('data/production_daily.csv', index=False, encoding='utf-8-sig')
+    df_location.to_csv('data/location_master.csv', index=False, encoding='utf-8-sig')
+    
+    print("✅ データ生成完了！")
+    print("\n📁 生成されたファイル:")
+    print("   - data/employee_master.csv (従業員マスタ)")
+    print("   - data/attendance_daily.csv (日次出勤データ)")
+    print("   - data/daily_shift_skills.csv (日次シフト別平均スキル)")
+    print("   - data/production_daily.csv (日次生産データ)")
+    print("   - data/location_master.csv (拠点マスタ)")
+    
+    # データサマリ表示
+    print("\n📊 データサマリ:")
+    print(f"   従業員総数: {len(df_employee)}")
+    print(f"   拠点数: {len(df_location)}")
+    print(f"   日数: 30日")
+    print(f"   平均出勤率: {attendance_rate:.1f}%")
+    print(f"   生産レコード数: {len(df_production)}")
+    
+    # 相関確認
+    corr_eff = df_production[['生産効率_指数']].merge(
+        df_daily_skills[['日付', '拠点', 'ライン', 'シフト', '平均スキルスコア']], 
+        on=['日付', '拠点', 'ライン', 'シフト']
+    )
+    corr_value = corr_eff['平均スキルスコア'].corr(corr_eff['生産効率_指数'])
+    print(f"\n📈 スキルと生産効率の相関係数: {corr_value:.3f}")
+
+if __name__ == "__main__":
+    main()
