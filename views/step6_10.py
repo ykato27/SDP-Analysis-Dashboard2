@@ -22,29 +22,33 @@ def render_step6(df_employee, selected_location, selected_line):
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔍 STEP 6 詳細フィルタ")
     
-    # シフトフィルタ
-    available_shifts = ['全て'] + sorted(df_loc['シフト'].unique().tolist())
-    selected_shift = st.sidebar.selectbox(
-        "シフト選択",
+    # シフトフィルタ（複数選択可能）
+    available_shifts = sorted(df_loc['シフト'].unique().tolist())
+    selected_shifts = st.sidebar.multiselect(
+        "🔄 シフト選択（複数選択可）",
         available_shifts,
-        key="step6_shift_filter"
+        default=available_shifts,  # デフォルトは全シフト選択
+        key="step6_shift_filter",
+        help="分析対象のシフトを選択（複数選択可）"
     )
     
     # シフトでフィルタリング
-    if selected_shift != '全て':
-        df_filtered = df_loc[df_loc['シフト'] == selected_shift].copy()
+    if selected_shifts:
+        df_filtered = df_loc[df_loc['シフト'].isin(selected_shifts)].copy()
     else:
+        # 何も選択されていない場合は全て表示
         df_filtered = df_loc.copy()
     
     # 経験年数フィルタ
     if len(df_filtered) > 0:
         min_exp, max_exp = int(df_filtered['経験年数'].min()), int(df_filtered['経験年数'].max())
         exp_range = st.sidebar.slider(
-            "経験年数範囲",
+            "📅 経験年数範囲",
             min_value=min_exp,
             max_value=max_exp,
             value=(min_exp, max_exp),
-            key="step6_exp_filter"
+            key="step6_exp_filter",
+            help="分析対象の経験年数範囲を指定"
         )
         df_filtered = df_filtered[
             (df_filtered['経験年数'] >= exp_range[0]) & 
@@ -55,12 +59,13 @@ def render_step6(df_employee, selected_location, selected_line):
     if len(df_filtered) > 0:
         min_skill, max_skill = float(df_filtered['総合スキルスコア'].min()), float(df_filtered['総合スキルスコア'].max())
         skill_range = st.sidebar.slider(
-            "総合スキルスコア範囲",
+            "⭐ 総合スキルスコア範囲",
             min_value=min_skill,
             max_value=max_skill,
             value=(min_skill, max_skill),
             step=0.1,
-            key="step6_skill_filter"
+            key="step6_skill_filter",
+            help="分析対象のスキルスコア範囲を指定"
         )
         df_filtered = df_filtered[
             (df_filtered['総合スキルスコア'] >= skill_range[0]) & 
@@ -68,7 +73,21 @@ def render_step6(df_employee, selected_location, selected_line):
         ].copy()
     
     # フィルタ結果の表示
-    st.info(f"📊 フィルタ結果: **{len(df_filtered)}名** / 全体 {len(df_loc)}名")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.info(f"📊 フィルタ結果: **{len(df_filtered)}名** / 全体 {len(df_loc)}名")
+    with col2:
+        if st.button("🔄 フィルタリセット", key="reset_filters", help="全てのフィルタをリセット"):
+            st.rerun()
+    
+    # 適用中のフィルタ情報を表示
+    if len(selected_shifts) < len(available_shifts) or \
+       (len(df_filtered) > 0 and (exp_range != (int(df_loc['経験年数'].min()), int(df_loc['経験年数'].max())) or \
+        skill_range != (float(df_loc['総合スキルスコア'].min()), float(df_loc['総合スキルスコア'].max())))):
+        with st.expander("🔍 適用中のフィルタ条件", expanded=False):
+            st.write(f"**シフト**: {', '.join(selected_shifts) if selected_shifts else '全て'}")
+            st.write(f"**経験年数**: {exp_range[0]}年 〜 {exp_range[1]}年")
+            st.write(f"**スキルスコア**: {skill_range[0]:.1f} 〜 {skill_range[1]:.1f}")
     
     if len(df_filtered) == 0:
         st.warning("⚠️ フィルタ条件に該当する従業員がいません。条件を調整してください。")
