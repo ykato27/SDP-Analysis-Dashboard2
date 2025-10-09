@@ -22,22 +22,52 @@ def render_step6(df_employee, selected_location, selected_line):
     st.sidebar.markdown("---")
     st.sidebar.subheader("🔍 STEP 6 詳細フィルタ")
     
-    # シフトフィルタ（複数選択可能）
+    # シフトフィルタ（複数選択可能、より見やすく）
+    st.sidebar.markdown("**🔄 シフト選択**")
     available_shifts = sorted(df_loc['シフト'].unique().tolist())
+    
+    # プリセット選択ボタン
+    col1, col2, col3 = st.sidebar.columns(3)
+    with col1:
+        if st.button("全選択", key="all_shifts", help="全シフトを選択", use_container_width=True):
+            st.session_state.shift_preset = "all"
+    with col2:
+        if st.button("昼勤", key="day_shifts", help="A班・B班", use_container_width=True):
+            st.session_state.shift_preset = "day"
+    with col3:
+        if st.button("夜勤", key="night_shifts", help="C班・D班", use_container_width=True):
+            st.session_state.shift_preset = "night"
+    
+    # プリセットに基づいてデフォルト値を設定
+    if 'shift_preset' not in st.session_state:
+        st.session_state.shift_preset = "all"
+    
+    if st.session_state.shift_preset == "all":
+        default_shifts = available_shifts
+    elif st.session_state.shift_preset == "day":
+        default_shifts = [s for s in available_shifts if s in ['A班', 'B班']]
+    elif st.session_state.shift_preset == "night":
+        default_shifts = [s for s in available_shifts if s in ['C班', 'D班']]
+    else:
+        default_shifts = available_shifts
+    
     selected_shifts = st.sidebar.multiselect(
-        "🔄 シフト選択（複数選択可）",
+        "対象シフト",
         available_shifts,
-        default=available_shifts,  # デフォルトは全シフト選択
+        default=default_shifts,
         key="step6_shift_filter",
         help="分析対象のシフトを選択（複数選択可）"
     )
+    
+    st.sidebar.caption(f"✓ 選択中: {len(selected_shifts)}/{len(available_shifts)} シフト")
     
     # シフトでフィルタリング
     if selected_shifts:
         df_filtered = df_loc[df_loc['シフト'].isin(selected_shifts)].copy()
     else:
-        # 何も選択されていない場合は全て表示
-        df_filtered = df_loc.copy()
+        # 何も選択されていない場合は警告を表示
+        st.sidebar.warning("⚠️ シフトを選択してください")
+        df_filtered = df_loc.copy()  # デフォルトは全データ
     
     # 経験年数フィルタ
     if len(df_filtered) > 0:
@@ -94,25 +124,41 @@ def render_step6(df_employee, selected_location, selected_line):
         return
     
     # 個人選択（複数選択可能）
-    st.subheader("🎯 個人選択")
+    st.markdown("---")
+    st.subheader("🎯 個人選択（複数選択可）")
+    
+    col1, col2, col3 = st.columns([3, 1, 1])
+    with col1:
+        st.markdown(f"📊 **フィルタリング対象者数**: {len(df_filtered)}名")
+    with col2:
+        select_all = st.button("✅ 全員選択", key="select_all_employees", use_container_width=True)
+    with col3:
+        clear_all = st.button("❌ 全員解除", key="clear_all_employees", use_container_width=True)
     
     # 従業員リストを作成（ID + スキルスコアで表示）
     df_filtered_sorted = df_filtered.sort_values('総合スキルスコア', ascending=False)
     employee_options = [
-        f"{row['従業員ID']} (スコア: {row['総合スキルスコア']:.2f}, 経験: {row['経験年数']}年)"
+        f"{row['従業員ID']} (スコア: {row['総合スキルスコア']:.2f}, 経験: {row['経験年数']}年, シフト: {row['シフト']})"
         for _, row in df_filtered_sorted.iterrows()
     ]
     employee_ids = df_filtered_sorted['従業員ID'].tolist()
     
-    # デフォルトは上位5名を選択
-    default_count = min(5, len(employee_ids))
-    default_selection = employee_options[:default_count]
+    # デフォルト選択の決定
+    if select_all:
+        default_selection = employee_options  # 全員選択
+    elif clear_all:
+        default_selection = []  # 全員解除
+    else:
+        # 通常時：上位5名を選択（または全員が5名未満の場合は全員）
+        default_count = min(5, len(employee_ids))
+        default_selection = employee_options[:default_count]
     
     selected_employees_display = st.multiselect(
-        "分析対象の従業員を選択（複数選択可）",
+        "👥 レーダーチャートに表示する従業員を選択",
         options=employee_options,
         default=default_selection,
-        help="レーダーチャートに表示する従業員を選択してください"
+        help="複数選択可能です。比較したい従業員を選んでください。",
+        key="employee_multiselect"
     )
     
     # 選択された従業員IDを取得
