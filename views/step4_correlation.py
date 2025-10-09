@@ -37,41 +37,31 @@ def render_correlation_analysis(df_emp, df_prod):
     """相関分析"""
     st.subheader("スキルスコアと生産性指標の相関")
     
-    # ライン・シフト単位で集計
-    skill_by_group = df_emp.groupby(['ライン', 'シフト']).agg({
+    # 従業員データ: ライン・シフト単位でスキル平均を計算
+    skill_by_shift = df_emp.groupby(['ライン', 'シフト']).agg({
         '総合スキルスコア': 'mean',
-        '操炉技術': 'mean',
-        '成分制御': 'mean',
-        '異常対応': 'mean',
-        '設備保全': 'mean',
-        '品質検査': 'mean',
-        '安全管理': 'mean',
     }).reset_index()
     
-    prod_by_group = df_prod.groupby(['ライン', 'シフト']).agg({
-        '生産効率_指数': 'mean',
-        '品質不良率': 'mean',
-        '稼働率': 'mean',
-    }).reset_index()
-    
-    merged = skill_by_group.merge(prod_by_group, on=['ライン', 'シフト'])
+    # 生産データと結合（日次×シフト単位）
+    # 生産データの各レコードに対応するスキルスコアを紐付け
+    merged = df_prod.merge(skill_by_shift, on=['ライン', 'シフト'], how='left')
     
     # ライン一覧を取得
     lines = sorted(merged['ライン'].unique())
     
     # ライン別に散布図を表示
-    st.markdown("### ライン別分析")
-    st.info("💡 **各点はシフト単位の実績です。**スキルが高いラインほど生産効率が高く、品質不良率が低い傾向が確認できます。")
+    st.markdown("### ライン別分析（日次実績）")
+    st.info("💡 **各点は1日の実績です（約30日分）。**シフト別に色分けしています。スキルが高いシフトほど生産効率が高く、品質不良率が低い傾向が確認できます。")
     
     for line in lines:
         st.markdown(f"#### {line}")
         
         # ラインのデータを抽出
-        line_data = merged[merged['ライン'] == line]
+        line_data = merged[merged['ライン'] == line].copy()
         
         # データが少なすぎる場合はスキップ
-        if len(line_data) < 2:
-            st.warning(f"⚠️ {line}のデータが不足しています（最低2シフト以上必要）")
+        if len(line_data) < 5:
+            st.warning(f"⚠️ {line}のデータが不足しています（最低5日分以上必要）")
             continue
         
         col1, col2 = st.columns(2)
@@ -85,8 +75,8 @@ def render_correlation_analysis(df_emp, df_prod):
                     x='総合スキルスコア',
                     y='生産効率_指数',
                     color='シフト',
-                    text='シフト',
-                    title=f"{line} - スキルスコア vs 生産効率",
+                    hover_data=['日付', 'シフト', '総合スキルスコア', '生産効率_指数'],
+                    title=f"{line} - スキルスコア vs 生産効率（日次）",
                     trendline="ols"
                 )
             except (ModuleNotFoundError, ImportError):
@@ -96,16 +86,17 @@ def render_correlation_analysis(df_emp, df_prod):
                     x='総合スキルスコア',
                     y='生産効率_指数',
                     color='シフト',
-                    text='シフト',
-                    title=f"{line} - スキルスコア vs 生産効率"
+                    hover_data=['日付', 'シフト', '総合スキルスコア', '生産効率_指数'],
+                    title=f"{line} - スキルスコア vs 生産効率（日次）"
                 )
             
-            # 相関係数計算
-            if len(line_data) >= 2:
-                corr, p_value = stats.pearsonr(line_data['総合スキルスコア'], line_data['生産効率_指数'])
+            # 相関係数計算（欠損値を除外）
+            clean_data = line_data[['総合スキルスコア', '生産効率_指数']].dropna()
+            if len(clean_data) >= 2:
+                corr, p_value = stats.pearsonr(clean_data['総合スキルスコア'], clean_data['生産効率_指数'])
                 
                 fig.add_annotation(
-                    text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}",
+                    text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}<br>N={len(clean_data)}",
                     xref="paper", yref="paper",
                     x=0.02, y=0.98,
                     showarrow=False,
@@ -114,7 +105,7 @@ def render_correlation_analysis(df_emp, df_prod):
                     borderwidth=1
                 )
             
-            fig.update_traces(textposition='top center', marker=dict(size=12))
+            fig.update_traces(marker=dict(size=8, opacity=0.7))
             fig.update_layout(height=400, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
         
@@ -127,8 +118,8 @@ def render_correlation_analysis(df_emp, df_prod):
                     x='総合スキルスコア',
                     y='品質不良率',
                     color='シフト',
-                    text='シフト',
-                    title=f"{line} - スキルスコア vs 品質不良率",
+                    hover_data=['日付', 'シフト', '総合スキルスコア', '品質不良率'],
+                    title=f"{line} - スキルスコア vs 品質不良率（日次）",
                     trendline="ols"
                 )
             except (ModuleNotFoundError, ImportError):
@@ -138,16 +129,17 @@ def render_correlation_analysis(df_emp, df_prod):
                     x='総合スキルスコア',
                     y='品質不良率',
                     color='シフト',
-                    text='シフト',
-                    title=f"{line} - スキルスコア vs 品質不良率"
+                    hover_data=['日付', 'シフト', '総合スキルスコア', '品質不良率'],
+                    title=f"{line} - スキルスコア vs 品質不良率（日次）"
                 )
             
-            # 相関係数計算
-            if len(line_data) >= 2:
-                corr, p_value = stats.pearsonr(line_data['総合スキルスコア'], line_data['品質不良率'])
+            # 相関係数計算（欠損値を除外）
+            clean_data = line_data[['総合スキルスコア', '品質不良率']].dropna()
+            if len(clean_data) >= 2:
+                corr, p_value = stats.pearsonr(clean_data['総合スキルスコア'], clean_data['品質不良率'])
                 
                 fig.add_annotation(
-                    text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}",
+                    text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}<br>N={len(clean_data)}",
                     xref="paper", yref="paper",
                     x=0.02, y=0.98,
                     showarrow=False,
@@ -156,7 +148,7 @@ def render_correlation_analysis(df_emp, df_prod):
                     borderwidth=1
                 )
             
-            fig.update_traces(textposition='top center', marker=dict(size=12))
+            fig.update_traces(marker=dict(size=8, opacity=0.7))
             fig.update_layout(height=400, showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
         
