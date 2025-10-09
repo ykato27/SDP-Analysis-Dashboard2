@@ -69,19 +69,36 @@ def render_bottleneck_identification(df):
     # 詳細テーブル
     st.subheader("ボトルネック詳細データ")
     
-    st.dataframe(
-        df_sorted[['工程', 'スキルカテゴリー', '要求レベル', '現在レベル', 'スキルギャップ', 
-                  '影響度_生産', '影響度_品質', '影響度_安全']].style.format({
-            '要求レベル': '{:.1f}',
-            '現在レベル': '{:.1f}',
-            'スキルギャップ': '{:.2f}',
-            '影響度_生産': '{:.2f}',
-            '影響度_品質': '{:.2f}',
-            '影響度_安全': '{:.2f}'
-        }).background_gradient(subset=['スキルギャップ'], cmap='RdYlGn_r'),
-        use_container_width=True,
-        height=400
-    )
+    try:
+        # matplotlibが利用可能な場合
+        st.dataframe(
+            df_sorted[['工程', 'スキルカテゴリー', '要求レベル', '現在レベル', 'スキルギャップ', 
+                      '影響度_生産', '影響度_品質', '影響度_安全']].style.format({
+                '要求レベル': '{:.1f}',
+                '現在レベル': '{:.1f}',
+                'スキルギャップ': '{:.2f}',
+                '影響度_生産': '{:.2f}',
+                '影響度_品質': '{:.2f}',
+                '影響度_安全': '{:.2f}'
+            }).background_gradient(subset=['スキルギャップ'], cmap='RdYlGn_r'),
+            use_container_width=True,
+            height=400
+        )
+    except ImportError:
+        # matplotlibが利用できない場合のフォールバック
+        st.dataframe(
+            df_sorted[['工程', 'スキルカテゴリー', '要求レベル', '現在レベル', 'スキルギャップ', 
+                      '影響度_生産', '影響度_品質', '影響度_安全']].style.format({
+                '要求レベル': '{:.1f}',
+                '現在レベル': '{:.1f}',
+                'スキルギャップ': '{:.2f}',
+                '影響度_生産': '{:.2f}',
+                '影響度_品質': '{:.2f}',
+                '影響度_安全': '{:.2f}'
+            }),
+            use_container_width=True,
+            height=400
+        )
 
 def render_process_analysis(df):
     """工程別分析"""
@@ -151,16 +168,31 @@ def render_process_analysis(df):
     st.plotly_chart(fig, use_container_width=True)
     
     # 工程別詳細テーブル
-    st.dataframe(
-        process_gap.style.background_gradient(subset=['ギャップ平均', 'ギャップ最大'], cmap='RdYlGn_r')
-                        .format({
-                            'ギャップ平均': '{:.2f}',
-                            'ギャップ最大': '{:.2f}',
-                            '生産影響度': '{:.2f}',
-                            '品質影響度': '{:.2f}',
-                            '安全影響度': '{:.2f}'
-                        }),
-        use_container_width=True
+    try:
+        # matplotlibが利用可能な場合
+        st.dataframe(
+            process_gap.style.background_gradient(subset=['ギャップ平均', 'ギャップ最大'], cmap='RdYlGn_r')
+                            .format({
+                                'ギャップ平均': '{:.2f}',
+                                'ギャップ最大': '{:.2f}',
+                                '生産影響度': '{:.2f}',
+                                '品質影響度': '{:.2f}',
+                                '安全影響度': '{:.2f}'
+                            }),
+            use_container_width=True
+        )
+    except ImportError:
+        # matplotlibが利用できない場合のフォールバック
+        st.dataframe(
+            process_gap.style.format({
+                'ギャップ平均': '{:.2f}',
+                'ギャップ最大': '{:.2f}',
+                '生産影響度': '{:.2f}',
+                '品質影響度': '{:.2f}',
+                '安全影響度': '{:.2f}'
+            }),
+            use_container_width=True
+        )
     )
 
 def render_priority_matrix(df):

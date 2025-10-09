@@ -270,16 +270,29 @@ def render_impact_analysis(df_emp, df_prod):
     st.plotly_chart(fig, use_container_width=True)
     
     # 影響度テーブル
-    st.dataframe(
-        impact_df.style.background_gradient(
-            subset=['生産効率への影響', '品質への影響', '安全への影響'],
-            cmap='YlOrRd'
-        ).format({
-            '生産効率への影響': '{:.2f}',
-            '品質への影響': '{:.2f}',
-            '安全への影響': '{:.2f}'
-        }),
-        use_container_width=True
+    try:
+        # matplotlibが利用可能な場合
+        st.dataframe(
+            impact_df.style.background_gradient(
+                subset=['生産効率への影響', '品質への影響', '安全への影響'],
+                cmap='YlOrRd'
+            ).format({
+                '生産効率への影響': '{:.2f}',
+                '品質への影響': '{:.2f}',
+                '安全への影響': '{:.2f}'
+            }),
+            use_container_width=True
+        )
+    except ImportError:
+        # matplotlibが利用できない場合のフォールバック
+        st.dataframe(
+            impact_df.style.format({
+                '生産効率への影響': '{:.2f}',
+                '品質への影響': '{:.2f}',
+                '安全への影響': '{:.2f}'
+            }),
+            use_container_width=True
+        )
     )
     
     st.success("✅ **活用方法**: 影響度が高いスキルを優先的に強化することで、効率的な改善が可能です")

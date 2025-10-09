@@ -48,13 +48,24 @@ def render_step6(df_employee, selected_location, selected_line):
     
     display_cols = ['従業員ID', 'シフト', '経験年数'] + skill_cols + ['総合スキルスコア']
     
-    st.dataframe(
-        df_loc[display_cols].sort_values('総合スキルスコア', ascending=False).style.background_gradient(
-            subset=skill_cols + ['総合スキルスコア'], cmap='RdYlGn', vmin=1, vmax=5
-        ).format({col: '{:.1f}' for col in skill_cols + ['総合スキルスコア']}),
-        use_container_width=True,
-        height=400
-    )
+    try:
+        # matplotlibが利用可能な場合
+        st.dataframe(
+            df_loc[display_cols].sort_values('総合スキルスコア', ascending=False).style.background_gradient(
+                subset=skill_cols + ['総合スキルスコア'], cmap='RdYlGn', vmin=1, vmax=5
+            ).format({col: '{:.1f}' for col in skill_cols + ['総合スキルスコア']}),
+            use_container_width=True,
+            height=400
+        )
+    except ImportError:
+        # matplotlibが利用できない場合のフォールバック
+        st.dataframe(
+            df_loc[display_cols].sort_values('総合スキルスコア', ascending=False).style.format(
+                {col: '{:.1f}' for col in skill_cols + ['総合スキルスコア']}
+            ),
+            use_container_width=True,
+            height=400
+        )
     
     st.info("💡 **次のステップ**: 育成対象者を特定し「STEP 7: 教育効果分析」で最適な研修プログラムを選定")
 
