@@ -86,21 +86,6 @@ def render_skill_radar(df_emp):
     )
     
     st.plotly_chart(fig, use_container_width=True)
-    
-    # 詳細テーブル
-    try:
-        # matplotlibが利用可能な場合
-        st.dataframe(
-            line_skills.style.background_gradient(cmap='RdYlGn', vmin=1, vmax=5)
-                            .format('{:.2f}'),
-            use_container_width=True
-        )
-    except ImportError:
-        # matplotlibが利用できない場合のフォールバック
-        st.dataframe(
-            line_skills.style.format('{:.2f}'),
-            use_container_width=True
-        )
 
 def render_skill_level_distribution(df_emp):
     """力量レベル分布分析"""
