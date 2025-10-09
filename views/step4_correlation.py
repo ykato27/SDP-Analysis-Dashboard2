@@ -293,6 +293,5 @@ def render_impact_analysis(df_emp, df_prod):
             }),
             use_container_width=True
         )
-    )
     
     st.success("✅ **活用方法**: 影響度が高いスキルを優先的に強化することで、効率的な改善が可能です")
