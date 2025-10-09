@@ -193,7 +193,6 @@ def render_process_analysis(df):
             }),
             use_container_width=True
         )
-    )
 
 def render_priority_matrix(df):
     """優先順位マトリクス"""
