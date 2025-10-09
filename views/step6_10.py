@@ -7,65 +7,190 @@ import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
+import numpy as np
 
 def render_step6(df_employee, selected_location, selected_line):
     """STEP 6: 個人・チーム力量の詳細分析"""
     st.title(f"👥 STEP 6: 個人・チーム力量分析 - {selected_location} / {selected_line}")
     st.markdown("**目的**: 対象工程のメンバー力量を把握し、育成ターゲットを特定")
     
+    # 基本フィルタリング
     df_loc = df_employee[(df_employee['拠点'] == selected_location) & 
                          (df_employee['ライン'] == selected_line)].copy()
     
-    # 個人スキルマップ
-    st.subheader("チームメンバースキルマップ")
+    # サイドバーに追加フィルタを配置
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 STEP 6 詳細フィルタ")
     
-    skill_cols = ['操炉技術', '成分制御', '異常対応', '設備保全', '品質検査', '安全管理']
-    
-    # 上位10名表示
-    top_members = df_loc.nlargest(10, '総合スキルスコア')
-    
-    fig = go.Figure()
-    
-    for _, member in top_members.iterrows():
-        fig.add_trace(go.Scatterpolar(
-            r=[member[col] for col in skill_cols],
-            theta=skill_cols,
-            fill='toself',
-            name=f"{member['従業員ID']} ({member['総合スキルスコア']:.1f})"
-        ))
-    
-    fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 5])),
-        showlegend=True,
-        title="上位10名のスキルプロファイル",
-        height=500
+    # シフトフィルタ
+    available_shifts = ['全て'] + sorted(df_loc['シフト'].unique().tolist())
+    selected_shift = st.sidebar.selectbox(
+        "シフト選択",
+        available_shifts,
+        key="step6_shift_filter"
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    # シフトでフィルタリング
+    if selected_shift != '全て':
+        df_filtered = df_loc[df_loc['シフト'] == selected_shift].copy()
+    else:
+        df_filtered = df_loc.copy()
     
-    # 詳細テーブル
-    st.subheader("メンバー詳細データ")
+    # 経験年数フィルタ
+    if len(df_filtered) > 0:
+        min_exp, max_exp = int(df_filtered['経験年数'].min()), int(df_filtered['経験年数'].max())
+        exp_range = st.sidebar.slider(
+            "経験年数範囲",
+            min_value=min_exp,
+            max_value=max_exp,
+            value=(min_exp, max_exp),
+            key="step6_exp_filter"
+        )
+        df_filtered = df_filtered[
+            (df_filtered['経験年数'] >= exp_range[0]) & 
+            (df_filtered['経験年数'] <= exp_range[1])
+        ].copy()
     
-    display_cols = ['従業員ID', 'シフト', '経験年数'] + skill_cols + ['総合スキルスコア']
+    # スキルスコアフィルタ
+    if len(df_filtered) > 0:
+        min_skill, max_skill = float(df_filtered['総合スキルスコア'].min()), float(df_filtered['総合スキルスコア'].max())
+        skill_range = st.sidebar.slider(
+            "総合スキルスコア範囲",
+            min_value=min_skill,
+            max_value=max_skill,
+            value=(min_skill, max_skill),
+            step=0.1,
+            key="step6_skill_filter"
+        )
+        df_filtered = df_filtered[
+            (df_filtered['総合スキルスコア'] >= skill_range[0]) & 
+            (df_filtered['総合スキルスコア'] <= skill_range[1])
+        ].copy()
+    
+    # フィルタ結果の表示
+    st.info(f"📊 フィルタ結果: **{len(df_filtered)}名** / 全体 {len(df_loc)}名")
+    
+    if len(df_filtered) == 0:
+        st.warning("⚠️ フィルタ条件に該当する従業員がいません。条件を調整してください。")
+        return
+    
+    # 個人選択（複数選択可能）
+    st.subheader("🎯 個人選択")
+    
+    # 従業員リストを作成（ID + スキルスコアで表示）
+    df_filtered_sorted = df_filtered.sort_values('総合スキルスコア', ascending=False)
+    employee_options = [
+        f"{row['従業員ID']} (スコア: {row['総合スキルスコア']:.2f}, 経験: {row['経験年数']}年)"
+        for _, row in df_filtered_sorted.iterrows()
+    ]
+    employee_ids = df_filtered_sorted['従業員ID'].tolist()
+    
+    # デフォルトは上位5名を選択
+    default_count = min(5, len(employee_ids))
+    default_selection = employee_options[:default_count]
+    
+    selected_employees_display = st.multiselect(
+        "分析対象の従業員を選択（複数選択可）",
+        options=employee_options,
+        default=default_selection,
+        help="レーダーチャートに表示する従業員を選択してください"
+    )
+    
+    # 選択された従業員IDを取得
+    if selected_employees_display:
+        selected_indices = [employee_options.index(emp) for emp in selected_employees_display]
+        selected_employee_ids = [employee_ids[i] for i in selected_indices]
+        df_selected = df_filtered[df_filtered['従業員ID'].isin(selected_employee_ids)].copy()
+    else:
+        st.warning("⚠️ 少なくとも1名の従業員を選択してください。")
+        df_selected = pd.DataFrame()
+    
+    # スキルマップ（選択された個人のみ）
+    if len(df_selected) > 0:
+        st.subheader("📊 選択メンバーのスキルプロファイル")
+        
+        skill_cols = ['操炉技術', '成分制御', '異常対応', '設備保全', '品質検査', '安全管理']
+        
+        fig = go.Figure()
+        
+        for _, member in df_selected.iterrows():
+            fig.add_trace(go.Scatterpolar(
+                r=[member[col] for col in skill_cols],
+                theta=skill_cols,
+                fill='toself',
+                name=f"{member['従業員ID']} ({member['総合スキルスコア']:.1f})"
+            ))
+        
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 5])),
+            showlegend=True,
+            title=f"選択メンバー({len(df_selected)}名)のスキルプロファイル比較",
+            height=500
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 選択メンバーの詳細統計
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("選択人数", f"{len(df_selected)}名")
+        with col2:
+            st.metric("平均スキルスコア", f"{df_selected['総合スキルスコア'].mean():.2f}")
+        with col3:
+            st.metric("平均経験年数", f"{df_selected['経験年数'].mean():.1f}年")
+    
+    # 詳細テーブル（フィルタリング結果のみ表示）
+    st.subheader("📋 フィルタリング結果詳細データ")
+    
+    display_cols = ['従業員ID', 'シフト', '経験年数'] + ['操炉技術', '成分制御', '異常対応', '設備保全', '品質検査', '安全管理'] + ['総合スキルスコア']
+    
+    # フィルタ結果全体を表示（選択した個人だけでなく）
+    df_display = df_filtered[display_cols].sort_values('総合スキルスコア', ascending=False)
     
     try:
         # matplotlibが利用可能な場合
         st.dataframe(
-            df_loc[display_cols].sort_values('総合スキルスコア', ascending=False).style.background_gradient(
-                subset=skill_cols + ['総合スキルスコア'], cmap='RdYlGn', vmin=1, vmax=5
-            ).format({col: '{:.1f}' for col in skill_cols + ['総合スキルスコア']}),
+            df_display.style.background_gradient(
+                subset=['操炉技術', '成分制御', '異常対応', '設備保全', '品質検査', '安全管理', '総合スキルスコア'],
+                cmap='RdYlGn',
+                vmin=1,
+                vmax=5
+            ).format({
+                '操炉技術': '{:.1f}',
+                '成分制御': '{:.1f}',
+                '異常対応': '{:.1f}',
+                '設備保全': '{:.1f}',
+                '品質検査': '{:.1f}',
+                '安全管理': '{:.1f}',
+                '総合スキルスコア': '{:.2f}'
+            }),
             use_container_width=True,
             height=400
         )
     except ImportError:
         # matplotlibが利用できない場合のフォールバック
         st.dataframe(
-            df_loc[display_cols].sort_values('総合スキルスコア', ascending=False).style.format(
-                {col: '{:.1f}' for col in skill_cols + ['総合スキルスコア']}
-            ),
+            df_display.style.format({
+                '操炉技術': '{:.1f}',
+                '成分制御': '{:.1f}',
+                '異常対応': '{:.1f}',
+                '設備保全': '{:.1f}',
+                '品質検査': '{:.1f}',
+                '安全管理': '{:.1f}',
+                '総合スキルスコア': '{:.2f}'
+            }),
             use_container_width=True,
             height=400
         )
+    
+    # CSVダウンロード機能
+    csv = df_display.to_csv(index=False, encoding='utf-8-sig')
+    st.download_button(
+        label="📥 フィルタリング結果をCSVダウンロード",
+        data=csv,
+        file_name=f"step6_filtered_data_{selected_location}_{selected_line}.csv",
+        mime="text/csv"
+    )
     
     st.info("💡 **次のステップ**: 育成対象者を特定し「STEP 7: 教育効果分析」で最適な研修プログラムを選定")
 
