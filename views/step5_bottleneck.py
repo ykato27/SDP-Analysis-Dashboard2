@@ -41,7 +41,7 @@ def render_bottleneck_identification(df):
     fig = go.Figure()
     
     # ラベル作成
-    df_sorted['ラベル'] = df_sorted['工程'] + ' - ' + df_sorted['スキルカテゴリー']
+    df_sorted['ラベル'] = df_sorted['工程'] + ' - ' + df_sorted['スキルカテゴリ']
     
     # 色分け（ギャップが正=要求レベル高い、負=現在レベル高い）
     colors = ['#d62728' if x > 0 else '#2ca02c' for x in df_sorted['スキルギャップ']]
@@ -72,7 +72,7 @@ def render_bottleneck_identification(df):
     try:
         # matplotlibが利用可能な場合
         st.dataframe(
-            df_sorted[['工程', 'スキルカテゴリー', '要求レベル', '現在レベル', 'スキルギャップ', 
+            df_sorted[['工程', 'スキルカテゴリ', '要求レベル', '現在レベル', 'スキルギャップ', 
                       '影響度_生産', '影響度_品質', '影響度_安全']].style.format({
                 '要求レベル': '{:.1f}',
                 '現在レベル': '{:.1f}',
@@ -87,7 +87,7 @@ def render_bottleneck_identification(df):
     except ImportError:
         # matplotlibが利用できない場合のフォールバック
         st.dataframe(
-            df_sorted[['工程', 'スキルカテゴリー', '要求レベル', '現在レベル', 'スキルギャップ', 
+            df_sorted[['工程', 'スキルカテゴリ', '要求レベル', '現在レベル', 'スキルギャップ', 
                       '影響度_生産', '影響度_品質', '影響度_安全']].style.format({
                 '要求レベル': '{:.1f}',
                 '現在レベル': '{:.1f}',
@@ -142,7 +142,7 @@ def render_process_analysis(df):
     pivot = df.pivot_table(
         values='スキルギャップ',
         index='工程',
-        columns='スキルカテゴリー',
+        columns='スキルカテゴリ',
         aggfunc='mean'
     )
     
@@ -212,7 +212,7 @@ def render_priority_matrix(df):
         y='総合影響度',
         color='工程',
         size=abs(df['スキルギャップ']) * 10,
-        hover_data=['スキルカテゴリー', '要求レベル', '現在レベル'],
+        hover_data=['スキルカテゴリ', '要求レベル', '現在レベル'],
         title="スキルギャップ × 影響度 マトリクス"
     )
     
@@ -274,7 +274,7 @@ def render_priority_matrix(df):
         
         if len(high_priority) > 0:
             st.dataframe(
-                high_priority[['工程', 'スキルカテゴリー', 'スキルギャップ', '総合影響度', '優先度']].head(10).style.format({
+                high_priority[['工程', 'スキルカテゴリ', 'スキルギャップ', '総合影響度', '優先度']].head(10).style.format({
                     'スキルギャップ': '{:.2f}',
                     '総合影響度': '{:.2f}'
                 }),
