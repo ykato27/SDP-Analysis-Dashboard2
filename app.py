@@ -91,7 +91,7 @@ def main():
         st.markdown("---")
         
         # フィルタ条件
-        if step != "🌍 STEP 1: 全社俯瞰" and step != "📊 STEP 10: 経営KPI":
+        if step not in ["🌍 STEP 1: 全社俯瞰", "🏭 STEP 2: 拠点内比較", "📊 STEP 10: 経営KPI"]:
             st.markdown("### フィルタ条件")
             selected_location = st.selectbox(
                 "拠点を選択",
@@ -127,10 +127,7 @@ def main():
         step1_global_overview.render(df_employee, df_production, df_location)
     
     elif step == "🏭 STEP 2: 拠点内比較":
-        if selected_location:
-            step2_location_analysis.render(df_employee, df_production, selected_location)
-        else:
-            st.warning("⚠️ 拠点を選択してください")
+        step2_location_analysis.render(df_employee, df_production, df_location)
     
     elif step == "🎯 STEP 3: スキル構造":
         if selected_location:
