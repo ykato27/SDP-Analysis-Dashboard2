@@ -202,6 +202,7 @@ def render_location_comparison(df_employee, df_production, df_location):
     # ボックスプロット比較
     st.markdown("### 分布比較（ボックスプロット）")
     
+    st.markdown("#### 生産指標の分布比較")
     col1, col2 = st.columns(2)
     
     with col1:
@@ -255,6 +256,44 @@ def render_location_comparison(df_employee, df_production, df_location):
         )
         
         st.plotly_chart(fig, use_container_width=True)
+    
+    # スキルカテゴリ別分布比較
+    st.markdown("#### スキルカテゴリ別の分布比較")
+    
+    skill_cols = ['操炉技術', '成分制御', '異常対応', '設備保全', '品質検査', '安全管理']
+    
+    # 3列×2行のレイアウト
+    col1, col2, col3 = st.columns(3)
+    
+    for idx, skill in enumerate(skill_cols):
+        col = [col1, col2, col3][idx % 3]
+        
+        with col:
+            fig = go.Figure()
+            
+            fig.add_trace(go.Box(
+                y=df_emp_a[skill],
+                name=location_a,
+                marker_color='#1f77b4',
+                boxmean='sd'
+            ))
+            
+            fig.add_trace(go.Box(
+                y=df_emp_b[skill],
+                name=location_b,
+                marker_color='#ff7f0e',
+                boxmean='sd'
+            ))
+            
+            fig.update_layout(
+                title=f"{skill}の分布",
+                yaxis_title="スキルレベル",
+                yaxis_range=[0, 5.5],
+                height=350,
+                showlegend=(idx == 0)  # 最初のグラフのみ凡例表示
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
 
 def render_within_location_line_analysis(df_employee, df_production, df_location):
     """拠点内ライン別分析"""
