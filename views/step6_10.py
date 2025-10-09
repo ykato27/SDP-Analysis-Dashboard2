@@ -18,61 +18,63 @@ def render_step6(df_employee, selected_location, selected_line):
     df_loc = df_employee[(df_employee['拠点'] == selected_location) & 
                          (df_employee['ライン'] == selected_line)].copy()
     
-    # サイドバーに追加フィルタを配置
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🔍 STEP 6 詳細フィルタ")
+    if len(df_loc) == 0:
+        st.warning("⚠️ 該当する従業員がいません。")
+        return
     
-    # シフトフィルタ（複数選択可能、より見やすく）
-    st.sidebar.markdown("**🔄 シフト選択**")
-    available_shifts = sorted(df_loc['シフト'].unique().tolist())
+    # メイン画面にフィルタセクションを配置
+    st.markdown("---")
+    st.subheader("🔍 組織・条件フィルタ")
     
-    # プリセット選択ボタン
-    col1, col2, col3 = st.sidebar.columns(3)
+    # フィルタを2列で配置
+    col1, col2 = st.columns(2)
+    
     with col1:
-        if st.button("全選択", key="all_shifts", help="全シフトを選択", use_container_width=True):
+        # シフトフィルタ
+        st.markdown("**🔄 シフト選択**")
+        available_shifts = sorted(df_loc['シフト'].unique().tolist())
+        
+        # プリセットボタン（横並び）
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
+        with btn_col1:
+            if st.button("全選択", key="all_shifts", use_container_width=True):
+                st.session_state.shift_preset = "all"
+        with btn_col2:
+            if st.button("昼勤", key="day_shifts", use_container_width=True):
+                st.session_state.shift_preset = "day"
+        with btn_col3:
+            if st.button("夜勤", key="night_shifts", use_container_width=True):
+                st.session_state.shift_preset = "night"
+        
+        # プリセットに基づいてデフォルト値を設定
+        if 'shift_preset' not in st.session_state:
             st.session_state.shift_preset = "all"
+        
+        if st.session_state.shift_preset == "all":
+            default_shifts = available_shifts
+        elif st.session_state.shift_preset == "day":
+            default_shifts = [s for s in available_shifts if s in ['A班', 'B班']]
+        elif st.session_state.shift_preset == "night":
+            default_shifts = [s for s in available_shifts if s in ['C班', 'D班']]
+        else:
+            default_shifts = available_shifts
+        
+        selected_shifts = st.multiselect(
+            "対象シフト",
+            available_shifts,
+            default=default_shifts,
+            key="step6_shift_filter",
+            help="分析対象のシフトを選択（複数選択可）"
+        )
+        
+        st.caption(f"✓ 選択中: {len(selected_shifts)}/{len(available_shifts)} シフト")
+    
     with col2:
-        if st.button("昼勤", key="day_shifts", help="A班・B班", use_container_width=True):
-            st.session_state.shift_preset = "day"
-    with col3:
-        if st.button("夜勤", key="night_shifts", help="C班・D班", use_container_width=True):
-            st.session_state.shift_preset = "night"
-    
-    # プリセットに基づいてデフォルト値を設定
-    if 'shift_preset' not in st.session_state:
-        st.session_state.shift_preset = "all"
-    
-    if st.session_state.shift_preset == "all":
-        default_shifts = available_shifts
-    elif st.session_state.shift_preset == "day":
-        default_shifts = [s for s in available_shifts if s in ['A班', 'B班']]
-    elif st.session_state.shift_preset == "night":
-        default_shifts = [s for s in available_shifts if s in ['C班', 'D班']]
-    else:
-        default_shifts = available_shifts
-    
-    selected_shifts = st.sidebar.multiselect(
-        "対象シフト",
-        available_shifts,
-        default=default_shifts,
-        key="step6_shift_filter",
-        help="分析対象のシフトを選択（複数選択可）"
-    )
-    
-    st.sidebar.caption(f"✓ 選択中: {len(selected_shifts)}/{len(available_shifts)} シフト")
-    
-    # シフトでフィルタリング
-    if selected_shifts:
-        df_filtered = df_loc[df_loc['シフト'].isin(selected_shifts)].copy()
-    else:
-        # 何も選択されていない場合は警告を表示
-        st.sidebar.warning("⚠️ シフトを選択してください")
-        df_filtered = df_loc.copy()  # デフォルトは全データ
-    
-    # 経験年数フィルタ
-    if len(df_filtered) > 0:
-        min_exp, max_exp = int(df_filtered['経験年数'].min()), int(df_filtered['経験年数'].max())
-        exp_range = st.sidebar.slider(
+        # 経験年数とスキルスコアのフィルタ
+        st.markdown("**📊 条件フィルタ**")
+        
+        min_exp, max_exp = int(df_loc['経験年数'].min()), int(df_loc['経験年数'].max())
+        exp_range = st.slider(
             "📅 経験年数範囲",
             min_value=min_exp,
             max_value=max_exp,
@@ -80,15 +82,9 @@ def render_step6(df_employee, selected_location, selected_line):
             key="step6_exp_filter",
             help="分析対象の経験年数範囲を指定"
         )
-        df_filtered = df_filtered[
-            (df_filtered['経験年数'] >= exp_range[0]) & 
-            (df_filtered['経験年数'] <= exp_range[1])
-        ].copy()
-    
-    # スキルスコアフィルタ
-    if len(df_filtered) > 0:
-        min_skill, max_skill = float(df_filtered['総合スキルスコア'].min()), float(df_filtered['総合スキルスコア'].max())
-        skill_range = st.sidebar.slider(
+        
+        min_skill, max_skill = float(df_loc['総合スキルスコア'].min()), float(df_loc['総合スキルスコア'].max())
+        skill_range = st.slider(
             "⭐ 総合スキルスコア範囲",
             min_value=min_skill,
             max_value=max_skill,
@@ -97,23 +93,39 @@ def render_step6(df_employee, selected_location, selected_line):
             key="step6_skill_filter",
             help="分析対象のスキルスコア範囲を指定"
         )
-        df_filtered = df_filtered[
-            (df_filtered['総合スキルスコア'] >= skill_range[0]) & 
-            (df_filtered['総合スキルスコア'] <= skill_range[1])
-        ].copy()
+    
+    # シフトでフィルタリング
+    if selected_shifts:
+        df_filtered = df_loc[df_loc['シフト'].isin(selected_shifts)].copy()
+    else:
+        st.warning("⚠️ シフトを選択してください")
+        df_filtered = df_loc.copy()
+    
+    # 経験年数でフィルタリング
+    df_filtered = df_filtered[
+        (df_filtered['経験年数'] >= exp_range[0]) & 
+        (df_filtered['経験年数'] <= exp_range[1])
+    ].copy()
+    
+    # スキルスコアでフィルタリング
+    df_filtered = df_filtered[
+        (df_filtered['総合スキルスコア'] >= skill_range[0]) & 
+        (df_filtered['総合スキルスコア'] <= skill_range[1])
+    ].copy()
     
     # フィルタ結果の表示
+    st.markdown("---")
     col1, col2 = st.columns([3, 1])
     with col1:
         st.info(f"📊 フィルタ結果: **{len(df_filtered)}名** / 全体 {len(df_loc)}名")
     with col2:
-        if st.button("🔄 フィルタリセット", key="reset_filters", help="全てのフィルタをリセット"):
+        if st.button("🔄 全リセット", key="reset_filters", help="全てのフィルタをリセット"):
             st.rerun()
     
     # 適用中のフィルタ情報を表示
     if len(selected_shifts) < len(available_shifts) or \
-       (len(df_filtered) > 0 and (exp_range != (int(df_loc['経験年数'].min()), int(df_loc['経験年数'].max())) or \
-        skill_range != (float(df_loc['総合スキルスコア'].min()), float(df_loc['総合スキルスコア'].max())))):
+       exp_range != (int(df_loc['経験年数'].min()), int(df_loc['経験年数'].max())) or \
+       skill_range != (float(df_loc['総合スキルスコア'].min()), float(df_loc['総合スキルスコア'].max())):
         with st.expander("🔍 適用中のフィルタ条件", expanded=False):
             st.write(f"**シフト**: {', '.join(selected_shifts) if selected_shifts else '全て'}")
             st.write(f"**経験年数**: {exp_range[0]}年 〜 {exp_range[1]}年")
