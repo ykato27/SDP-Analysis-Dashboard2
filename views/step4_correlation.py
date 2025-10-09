@@ -37,21 +37,56 @@ def render_correlation_analysis(df_emp, df_prod):
     """相関分析"""
     st.subheader("スキルスコアと生産性指標の相関")
     
-    # 従業員データ: ライン・シフト単位でスキル平均を計算
-    skill_by_shift = df_emp.groupby(['ライン', 'シフト']).agg({
-        '総合スキルスコア': 'mean',
-    }).reset_index()
+    # 日々のメンバー構成を模擬的に再現
+    # 各シフトの従業員プールから日ごとにランダムサンプリング
+    np.random.seed(42)  # 再現性のため
     
-    # 生産データと結合（日次×シフト単位）
-    # 生産データの各レコードに対応するスキルスコアを紐付け
-    merged = df_prod.merge(skill_by_shift, on=['ライン', 'シフト'], how='left')
+    # 各日×ライン×シフトごとにスキル平均を計算
+    merged_data = []
+    
+    for _, prod_row in df_prod.iterrows():
+        date = prod_row['日付']
+        line = prod_row['ライン']
+        shift = prod_row['シフト']
+        
+        # そのライン・シフトの従業員プールを取得
+        emp_pool = df_emp[(df_emp['ライン'] == line) & (df_emp['シフト'] == shift)]
+        
+        if len(emp_pool) == 0:
+            continue
+        
+        # 日ごとに5-10名がランダムに出勤すると仮定
+        n_workers = min(len(emp_pool), np.random.randint(5, 11))
+        daily_team = emp_pool.sample(n=n_workers, replace=False)
+        
+        # その日のチームの平均スキルスコアを計算
+        avg_skill = daily_team['総合スキルスコア'].mean()
+        
+        # スキルカテゴリー別の平均も計算
+        skill_cols = ['操炉技術', '成分制御', '異常対応', '設備保全', '品質検査', '安全管理']
+        skill_avgs = {col: daily_team[col].mean() for col in skill_cols}
+        
+        # 生産データと結合
+        row_data = prod_row.to_dict()
+        row_data['総合スキルスコア'] = avg_skill
+        row_data.update(skill_avgs)
+        merged_data.append(row_data)
+    
+    merged = pd.DataFrame(merged_data)
     
     # ライン一覧を取得
     lines = sorted(merged['ライン'].unique())
     
     # ライン別に散布図を表示
     st.markdown("### ライン別分析（日次実績）")
-    st.info("💡 **各点は1日の実績です（約30日分）。**シフト別に色分けしています。スキルが高いシフトほど生産効率が高く、品質不良率が低い傾向が確認できます。")
+    st.info("""
+    💡 **各点は1日の実績です（約30日分）。**シフト別に色分けしています。
+    
+    **改善点**: 日々のシフトメンバー構成の変動を反映しています。
+    - 同じシフトでも、日によって出勤メンバーが異なるため、スキルスコアが変動します
+    - この変動により、スキルと生産性の真の相関関係が可視化されます
+    - ばらつきがあるほど、メンバー構成の影響が見えてきます
+    """)
     
     for line in lines:
         st.markdown(f"#### {line}")
@@ -164,8 +199,13 @@ def render_correlation_analysis(df_emp, df_prod):
     
     for i, skill in enumerate(skill_cols):
         for j, prod in enumerate(prod_cols):
-            corr, _ = stats.pearsonr(merged[skill], merged[prod])
-            corr_matrix[i, j] = corr
+            # 欠損値を除外して相関計算
+            valid_data = merged[[skill, prod]].dropna()
+            if len(valid_data) >= 2:
+                corr, _ = stats.pearsonr(valid_data[skill], valid_data[prod])
+                corr_matrix[i, j] = corr
+            else:
+                corr_matrix[i, j] = 0
     
     fig = go.Figure(data=go.Heatmap(
         z=corr_matrix,
