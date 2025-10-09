@@ -60,16 +60,29 @@ def render_correlation_analysis(df_emp, df_prod):
     
     with col1:
         # 散布図: スキルスコア vs 生産効率
-        fig = px.scatter(
-            merged,
-            x='総合スキルスコア',
-            y='生産効率_指数',
-            color='ライン',
-            size='稼働率',
-            hover_data=['シフト'],
-            title="スキルスコア vs 生産効率",
-            trendline="ols"
-        )
+        try:
+            # statsmodelsが利用可能な場合、トレンドライン付き
+            fig = px.scatter(
+                merged,
+                x='総合スキルスコア',
+                y='生産効率_指数',
+                color='ライン',
+                size='稼働率',
+                hover_data=['シフト'],
+                title="スキルスコア vs 生産効率",
+                trendline="ols"
+            )
+        except (ModuleNotFoundError, ImportError):
+            # statsmodelsがない場合、トレンドラインなし
+            fig = px.scatter(
+                merged,
+                x='総合スキルスコア',
+                y='生産効率_指数',
+                color='ライン',
+                size='稼働率',
+                hover_data=['シフト'],
+                title="スキルスコア vs 生産効率"
+            )
         
         # 相関係数計算
         corr, p_value = stats.pearsonr(merged['総合スキルスコア'], merged['生産効率_指数'])
@@ -89,16 +102,29 @@ def render_correlation_analysis(df_emp, df_prod):
     
     with col2:
         # 散布図: スキルスコア vs 品質不良率
-        fig = px.scatter(
-            merged,
-            x='総合スキルスコア',
-            y='品質不良率',
-            color='ライン',
-            size='稼働率',
-            hover_data=['シフト'],
-            title="スキルスコア vs 品質不良率",
-            trendline="ols"
-        )
+        try:
+            # statsmodelsが利用可能な場合、トレンドライン付き
+            fig = px.scatter(
+                merged,
+                x='総合スキルスコア',
+                y='品質不良率',
+                color='ライン',
+                size='稼働率',
+                hover_data=['シフト'],
+                title="スキルスコア vs 品質不良率",
+                trendline="ols"
+            )
+        except (ModuleNotFoundError, ImportError):
+            # statsmodelsがない場合、トレンドラインなし
+            fig = px.scatter(
+                merged,
+                x='総合スキルスコア',
+                y='品質不良率',
+                color='ライン',
+                size='稼働率',
+                hover_data=['シフト'],
+                title="スキルスコア vs 品質不良率"
+            )
         
         # 相関係数計算
         corr, p_value = stats.pearsonr(merged['総合スキルスコア'], merged['品質不良率'])
