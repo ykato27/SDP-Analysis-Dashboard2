@@ -1,180 +1,254 @@
 """
-ダミーデータ生成スクリプト
-- 30日間のデータ
-- 複数拠点（日本 + 海外3拠点）
-- 各チーム・各日で休む人が変わる → スキル平均値が変動
-- スキル平均値が低い日 → 品質不良率が高い（負の相関 R≒-0.7）
+SDP (Skill Driven Production) ダッシュボード用ダミーデータ生成スクリプト
+高炉メーカーのグローバル拠点データを生成
 """
 
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import random
 
-# ランダムシード固定（再現性のため）
+# ランダムシードの固定
 np.random.seed(42)
+random.seed(42)
 
-# 設定
-START_DATE = datetime(2025, 1, 1)
-NUM_DAYS = 30
-TEAMS = ['Aチーム', 'Bチーム', 'Cチーム']
-PROCESSES = ['加工', '組立', '検査']
-
-# 拠点設定（日本 + 海外3拠点）
+# 拠点定義（グローバル展開）
 LOCATIONS = {
-    '日本 (JP)': {'skill_base': 4.0, 'skill_range': (3.5, 4.8)},
-    '拠点A (IN)': {'skill_base': 3.2, 'skill_range': (2.5, 4.0)},
-    '拠点B (BR)': {'skill_base': 3.0, 'skill_range': (2.3, 3.8)},
-    '拠点C (VN)': {'skill_base': 2.8, 'skill_range': (2.2, 3.6)}
+    '日本_千葉': {'country': '日本', 'lat': 35.6, 'lon': 140.1, 'benchmark': True, 'efficiency_base': 100, 'quality_base': 0.5, 'safety_base': 0.2},
+    '日本_君津': {'country': '日本', 'lat': 35.3, 'lon': 139.9, 'benchmark': True, 'efficiency_base': 98, 'quality_base': 0.6, 'safety_base': 0.3},
+    '中国_上海': {'country': '中国', 'lat': 31.2, 'lon': 121.5, 'benchmark': False, 'efficiency_base': 85, 'quality_base': 2.5, 'safety_base': 1.5},
+    '中国_大連': {'country': '中国', 'lat': 38.9, 'lon': 121.6, 'benchmark': False, 'efficiency_base': 82, 'quality_base': 2.8, 'safety_base': 1.8},
+    'インド_ムンバイ': {'country': 'インド', 'lat': 19.1, 'lon': 72.9, 'benchmark': False, 'efficiency_base': 75, 'quality_base': 4.2, 'safety_base': 3.5},
+    'インドネシア_ジャカルタ': {'country': 'インドネシア', 'lat': -6.2, 'lon': 106.8, 'benchmark': False, 'efficiency_base': 70, 'quality_base': 5.0, 'safety_base': 4.2},
+    'タイ_バンコク': {'country': 'タイ', 'lat': 13.8, 'lon': 100.5, 'benchmark': False, 'efficiency_base': 78, 'quality_base': 3.5, 'safety_base': 2.8},
+    'ベトナム_ホーチミン': {'country': 'ベトナム', 'lat': 10.8, 'lon': 106.7, 'benchmark': False, 'efficiency_base': 72, 'quality_base': 4.5, 'safety_base': 3.8},
+    'ブラジル_サンパウロ': {'country': 'ブラジル', 'lat': -23.6, 'lon': -46.7, 'benchmark': False, 'efficiency_base': 80, 'quality_base': 3.0, 'safety_base': 2.5},
+    'メキシコ_モンテレイ': {'country': 'メキシコ', 'lat': 25.7, 'lon': -100.3, 'benchmark': False, 'efficiency_base': 77, 'quality_base': 3.8, 'safety_base': 3.0},
 }
 
-# データリスト
-data = []
+# ライン・シフト定義
+LINES = ['高炉1号', '高炉2号', '転炉A', '転炉B', '圧延1', '圧延2']
+SHIFTS = ['A班', 'B班', 'C班', 'D班']
 
-# 日付ループ
-for day_offset in range(NUM_DAYS):
-    current_date = START_DATE + timedelta(days=day_offset)
+# スキルカテゴリ定義（高炉メーカー特有）
+SKILL_CATEGORIES = {
+    '操炉技術': {'weight': 0.25, 'impact_efficiency': 0.30, 'impact_quality': 0.25, 'impact_safety': 0.20},
+    '成分制御': {'weight': 0.20, 'impact_efficiency': 0.20, 'impact_quality': 0.35, 'impact_safety': 0.15},
+    '異常対応': {'weight': 0.20, 'impact_efficiency': 0.25, 'impact_quality': 0.20, 'impact_safety': 0.35},
+    '設備保全': {'weight': 0.15, 'impact_efficiency': 0.15, 'impact_quality': 0.10, 'impact_safety': 0.20},
+    '品質検査': {'weight': 0.10, 'impact_efficiency': 0.05, 'impact_quality': 0.30, 'impact_safety': 0.05},
+    '安全管理': {'weight': 0.10, 'impact_efficiency': 0.05, 'impact_quality': 0.00, 'impact_safety': 0.35},
+}
+
+# 工程定義
+PROCESSES = ['原料準備', '高炉操業', '転炉精錬', 'スラグ制御', '連続鋳造', '熱間圧延', '冷間圧延', '検査']
+
+def generate_employee_data(n_employees=2000):
+    """従業員スキルデータ生成"""
+    data = []
+    employee_id = 1000
     
-    # その日のシフト割り当て（3チームを日勤・夜勤・休みにローテーション）
-    team_rotation_index = day_offset % 3
-    
-    if team_rotation_index == 0:
-        day_team = 'Aチーム'
-        night_team = 'Bチーム'
-        rest_team = 'Cチーム'
-    elif team_rotation_index == 1:
-        day_team = 'Bチーム'
-        night_team = 'Cチーム'
-        rest_team = 'Aチーム'
-    else:
-        day_team = 'Cチーム'
-        night_team = 'Aチーム'
-        rest_team = 'Bチーム'
-    
-    # 拠点ごとにデータ生成
-    for location, location_config in LOCATIONS.items():
-        skill_min, skill_max = location_config['skill_range']
+    for location, loc_info in LOCATIONS.items():
+        # 拠点ごとのベーススキルレベル（日本拠点が高い）
+        if loc_info['benchmark']:
+            base_skill = 4.0
+            skill_std = 0.6
+        else:
+            # 海外拠点はベース効率に応じてスキルレベルを調整
+            base_skill = 2.5 + (loc_info['efficiency_base'] - 70) / 30 * 1.5
+            skill_std = 0.9
         
-        # 工程ごとにデータ生成
+        # 各拠点の従業員数（拠点規模に応じて調整）
+        n_per_location = int(n_employees / len(LOCATIONS) * random.uniform(0.8, 1.2))
+        
+        for _ in range(n_per_location):
+            line = random.choice(LINES)
+            shift = random.choice(SHIFTS)
+            
+            # シフト・ラインによるスキル差異
+            shift_modifier = {'A班': 0.2, 'B班': 0.1, 'C班': -0.1, 'D班': -0.2}[shift]
+            line_modifier = np.random.uniform(-0.3, 0.3)
+            
+            # 各スキルカテゴリのレベル生成
+            skills = {}
+            for skill_name in SKILL_CATEGORIES.keys():
+                skill_level = base_skill + shift_modifier + line_modifier
+                skill_level += np.random.normal(0, skill_std)
+                skill_level = np.clip(skill_level, 1.0, 5.0)
+                skills[skill_name] = round(skill_level, 1)
+            
+            # 総合スキルスコア計算
+            total_skill = sum(skills[k] * SKILL_CATEGORIES[k]['weight'] 
+                            for k in SKILL_CATEGORIES.keys())
+            
+            # 経験年数（スキルレベルと相関）
+            experience_years = max(1, int(np.random.gamma(total_skill, 2)))
+            
+            # 生産効率・品質への影響
+            efficiency = loc_info['efficiency_base'] + (total_skill - 3.0) * 8 + np.random.normal(0, 3)
+            quality_defect = loc_info['quality_base'] + (5.0 - total_skill) * 0.8 + abs(np.random.normal(0, 0.5))
+            
+            data.append({
+                '従業員ID': f'EMP{employee_id:05d}',
+                '拠点': location,
+                '国': loc_info['country'],
+                'ライン': line,
+                'シフト': shift,
+                '経験年数': experience_years,
+                '評価日': datetime.now().date(),
+                **skills,
+                '総合スキルスコア': round(total_skill, 2),
+                '生産効率_個人': round(efficiency, 1),
+                '品質不良率_個人': round(quality_defect, 2),
+            })
+            employee_id += 1
+    
+    return pd.DataFrame(data)
+
+def generate_production_data(days=180):
+    """日次生産データ生成"""
+    data = []
+    start_date = datetime.now() - timedelta(days=days)
+    
+    for location, loc_info in LOCATIONS.items():
+        for day in range(days):
+            date = start_date + timedelta(days=day)
+            
+            for line in LINES:
+                for shift in SHIFTS:
+                    # ベース生産性
+                    base_efficiency = loc_info['efficiency_base']
+                    base_quality = loc_info['quality_base']
+                    base_safety = loc_info['safety_base']
+                    
+                    # 時系列トレンド（改善傾向）
+                    trend = day / days * 5 if not loc_info['benchmark'] else 0
+                    
+                    # ランダム変動
+                    daily_var = np.random.normal(0, 3)
+                    
+                    # 生産効率（t/h換算）
+                    efficiency = base_efficiency + trend + daily_var
+                    efficiency = np.clip(efficiency, 50, 120)
+                    
+                    # 品質不良率
+                    quality_defect = base_quality - trend * 0.1 + abs(np.random.normal(0, 0.3))
+                    quality_defect = max(0.1, quality_defect)
+                    
+                    # 労災発生（確率的）
+                    accident = 1 if np.random.random() < base_safety / 100 else 0
+                    
+                    # 生産量
+                    production_volume = efficiency * 24 * random.uniform(0.9, 1.0)
+                    
+                    data.append({
+                        '日付': date.date(),
+                        '拠点': location,
+                        '国': loc_info['country'],
+                        'ライン': line,
+                        'シフト': shift,
+                        '生産量_ton': round(production_volume, 1),
+                        '生産効率_指数': round(efficiency, 1),
+                        '品質不良率': round(quality_defect, 2),
+                        '労災発生': accident,
+                        '稼働率': round(random.uniform(85, 98), 1),
+                        '歩留まり': round(random.uniform(94, 99.5), 1),
+                    })
+    
+    return pd.DataFrame(data)
+
+def generate_training_data(n_records=500):
+    """教育・訓練履歴データ生成"""
+    data = []
+    training_programs = [
+        '高炉操業基礎', '成分制御実践', '異常対応訓練', '設備保全コース',
+        '品質管理手法', '安全作業手順', '5S活動', 'トラブルシューティング'
+    ]
+    
+    for _ in range(n_records):
+        training_date = datetime.now() - timedelta(days=random.randint(0, 365))
+        
+        data.append({
+            '受講日': training_date.date(),
+            '従業員ID': f'EMP{random.randint(1000, 3000):05d}',
+            '研修プログラム': random.choice(training_programs),
+            '受講時間': random.choice([8, 16, 24, 40]),
+            '理解度テスト': round(random.uniform(60, 100), 1),
+            '実技評価': round(random.uniform(1, 5), 1),
+            'コスト_円': random.choice([50000, 100000, 150000, 200000]),
+        })
+    
+    return pd.DataFrame(data)
+
+def generate_process_bottleneck_data():
+    """工程別スキルボトルネックデータ生成"""
+    data = []
+    
+    for location in LOCATIONS.keys():
         for process in PROCESSES:
-            # 日勤のデータ
-            # スキル平均値：拠点ごとの範囲でランダムに変動（休む人が変わる想定）
-            day_skill_mean = np.random.uniform(skill_min, skill_max)
-            
-            # 品質不良率：スキルと負の相関（R≒-0.7）
-            # スキルが高い → 不良率低い、スキルが低い → 不良率高い
-            # 基準不良率 = 5.0 - (スキル平均 * 1.2) + ノイズ
-            day_defect_base = 5.0 - (day_skill_mean * 1.2)
-            day_defect_noise = np.random.normal(0, 0.3)  # ノイズ追加
-            day_defect_rate = max(0.1, day_defect_base + day_defect_noise)  # 最低0.1%
-            
-            # 生産数量
-            day_production = np.random.randint(800, 1200)
-            
-            # 日次生産量（トン単位） - 既存のquality_skill_analysis.pyとの互換性のため
-            day_daily_production = np.random.randint(500, 3000) * (1 + (day_skill_mean - 3.5) / 5)
-            
-            # 生産効率
-            day_efficiency = (75 + day_skill_mean * 4 + np.random.randn() * 3)
-            day_efficiency = max(75, min(98, day_efficiency))
-            
-            # 歩留まり = 100 - 不良率
-            day_yield = 100 - day_defect_rate
-            
-            # 従業員数（仮）
-            day_employees = np.random.randint(5, 15)
-            
-            data.append({
-                '日付': current_date,
-                '拠点': location,
-                '工程': process,
-                'シフト': '日勤',
-                'チーム': day_team,
-                '生産数量': day_production,
-                '日次生産量 (t)': round(day_daily_production, 1),
-                '生産効率 (%)': round(day_efficiency, 1),
-                '歩留まり (%)': round(day_yield, 2),
-                '品質不良率 (%)': round(day_defect_rate, 2),
-                '平均スキル予測値': round(day_skill_mean, 2),
-                '従業員数': day_employees,
-                f'技術力_平均': round(day_skill_mean + np.random.uniform(-0.2, 0.2), 2),
-                f'安全意識_平均': round(day_skill_mean + np.random.uniform(-0.3, 0.3), 2),
-                f'品質意識_平均': round(day_skill_mean + np.random.uniform(-0.2, 0.2), 2),
-                f'チームワーク_平均': round(day_skill_mean + np.random.uniform(-0.3, 0.3), 2),
-                f'改善提案力_平均': round(day_skill_mean + np.random.uniform(-0.4, 0.4), 2),
-            })
-            
-            # 夜勤のデータ
-            # 夜勤は日勤よりもやや低めのスキル平均値（夜勤効果）
-            night_skill_mean = np.random.uniform(max(1.0, skill_min - 0.2), skill_max - 0.2)
-            
-            # 品質不良率：スキルと負の相関 + 夜勤効果でやや高め
-            night_defect_base = 5.5 - (night_skill_mean * 1.2)  # 夜勤は基準値が少し高い
-            night_defect_noise = np.random.normal(0, 0.3)
-            night_defect_rate = max(0.1, night_defect_base + night_defect_noise)
-            
-            night_production = np.random.randint(700, 1100)
-            
-            # 日次生産量（トン単位）
-            night_daily_production = np.random.randint(500, 3000) * (1 + (night_skill_mean - 3.5) / 5)
-            
-            # 生産効率
-            night_efficiency = (75 + night_skill_mean * 4 + np.random.randn() * 3)
-            night_efficiency = max(75, min(98, night_efficiency))
-            
-            night_yield = 100 - night_defect_rate
-            
-            # 従業員数（仮）
-            night_employees = np.random.randint(5, 15)
-            
-            data.append({
-                '日付': current_date,
-                '拠点': location,
-                '工程': process,
-                'シフト': '夜勤',
-                'チーム': night_team,
-                '生産数量': night_production,
-                '日次生産量 (t)': round(night_daily_production, 1),
-                '生産効率 (%)': round(night_efficiency, 1),
-                '歩留まり (%)': round(night_yield, 2),
-                '品質不良率 (%)': round(night_defect_rate, 2),
-                '平均スキル予測値': round(night_skill_mean, 2),
-                '従業員数': night_employees,
-                f'技術力_平均': round(night_skill_mean + np.random.uniform(-0.2, 0.2), 2),
-                f'安全意識_平均': round(night_skill_mean + np.random.uniform(-0.3, 0.3), 2),
-                f'品質意識_平均': round(night_skill_mean + np.random.uniform(-0.2, 0.2), 2),
-                f'チームワーク_平均': round(night_skill_mean + np.random.uniform(-0.3, 0.3), 2),
-                f'改善提案力_平均': round(night_skill_mean + np.random.uniform(-0.4, 0.4), 2),
-            })
+            for skill in SKILL_CATEGORIES.keys():
+                # 要求スキルレベル
+                required_skill = random.uniform(3.5, 4.5)
+                
+                # 現在の保有スキルレベル
+                current_skill = required_skill - random.uniform(-0.5, 1.5)
+                current_skill = max(1.0, current_skill)
+                
+                # ギャップ
+                gap = required_skill - current_skill
+                
+                data.append({
+                    '拠点': location,
+                    '工程': process,
+                    'スキルカテゴリ': skill,
+                    '要求レベル': round(required_skill, 1),
+                    '現在レベル': round(current_skill, 1),
+                    'スキルギャップ': round(gap, 1),
+                    '影響度_生産': SKILL_CATEGORIES[skill]['impact_efficiency'],
+                    '影響度_品質': SKILL_CATEGORIES[skill]['impact_quality'],
+                    '影響度_安全': SKILL_CATEGORIES[skill]['impact_safety'],
+                })
+    
+    return pd.DataFrame(data)
 
-# DataFrameに変換
-df = pd.DataFrame(data)
+def generate_location_master():
+    """拠点マスタデータ生成"""
+    data = []
+    
+    for location, info in LOCATIONS.items():
+        data.append({
+            '拠点': location,
+            '国': info['country'],
+            '緯度': info['lat'],
+            '経度': info['lon'],
+            'ベンチマーク拠点': info['benchmark'],
+            '稼働開始年': random.randint(1970, 2020),
+            '従業員数': random.randint(200, 500),
+            '高炉数': random.randint(1, 3),
+        })
+    
+    return pd.DataFrame(data)
 
-# CSVとして保存
-output_path = '/home/claude/SDP-Analysis-Dashboard/data/daily_production_dummy.csv'
-df.to_csv(output_path, index=False, encoding='utf-8-sig')
-
-print(f"✅ ダミーデータ生成完了: {output_path}")
-print(f"📊 データ件数: {len(df)}行")
-print(f"📅 期間: {df['日付'].min()} ～ {df['日付'].max()}")
-
-# 相関係数を確認
-print("\n【相関係数確認（拠点別・工程別）】")
-for location in LOCATIONS.keys():
-    print(f"\n■ {location}")
-    for process in PROCESSES:
-        df_process = df[(df['拠点'] == location) & (df['工程'] == process)]
-        
-        # 日勤
-        df_day = df_process[df_process['シフト'] == '日勤']
-        if len(df_day) > 2:
-            corr_day = df_day['平均スキル予測値'].corr(df_day['品質不良率 (%)'])
-            print(f"  {process} - 日勤: R = {corr_day:.3f}")
-        
-        # 夜勤
-        df_night = df_process[df_process['シフト'] == '夜勤']
-        if len(df_night) > 2:
-            corr_night = df_night['平均スキル予測値'].corr(df_night['品質不良率 (%)'])
-            print(f"  {process} - 夜勤: R = {corr_night:.3f}")
-
-print("\n【サンプルデータ】")
-print(df.head(10))
+if __name__ == '__main__':
+    print("SDP ダミーデータ生成開始...")
+    
+    # データ生成
+    df_employee = generate_employee_data(2000)
+    df_production = generate_production_data(180)
+    df_training = generate_training_data(500)
+    df_bottleneck = generate_process_bottleneck_data()
+    df_location = generate_location_master()
+    
+    # CSV保存
+    df_employee.to_csv('data/employee_skill_data.csv', index=False, encoding='utf-8-sig')
+    df_production.to_csv('data/daily_production_data.csv', index=False, encoding='utf-8-sig')
+    df_training.to_csv('data/training_history_data.csv', index=False, encoding='utf-8-sig')
+    df_bottleneck.to_csv('data/process_bottleneck_data.csv', index=False, encoding='utf-8-sig')
+    df_location.to_csv('data/location_master_data.csv', index=False, encoding='utf-8-sig')
+    
+    print(f"✅ 従業員データ: {len(df_employee)} 件")
+    print(f"✅ 生産データ: {len(df_production)} 件")
+    print(f"✅ 研修データ: {len(df_training)} 件")
+    print(f"✅ ボトルネックデータ: {len(df_bottleneck)} 件")
+    print(f"✅ 拠点マスタ: {len(df_location)} 件")
+    print("\nデータ生成完了！")
