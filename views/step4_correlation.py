@@ -56,91 +56,111 @@ def render_correlation_analysis(df_emp, df_prod):
     
     merged = skill_by_group.merge(prod_by_group, on=['ライン', 'シフト'])
     
-    col1, col2 = st.columns(2)
+    # ライン一覧を取得
+    lines = sorted(merged['ライン'].unique())
     
-    with col1:
-        # 散布図: スキルスコア vs 生産効率
-        try:
-            # statsmodelsが利用可能な場合、トレンドライン付き
-            fig = px.scatter(
-                merged,
-                x='総合スキルスコア',
-                y='生産効率_指数',
-                color='ライン',
-                size='稼働率',
-                hover_data=['シフト'],
-                title="スキルスコア vs 生産効率",
-                trendline="ols"
-            )
-        except (ModuleNotFoundError, ImportError):
-            # statsmodelsがない場合、トレンドラインなし
-            fig = px.scatter(
-                merged,
-                x='総合スキルスコア',
-                y='生産効率_指数',
-                color='ライン',
-                size='稼働率',
-                hover_data=['シフト'],
-                title="スキルスコア vs 生産効率"
-            )
-        
-        # 相関係数計算
-        corr, p_value = stats.pearsonr(merged['総合スキルスコア'], merged['生産効率_指数'])
-        
-        fig.add_annotation(
-            text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}",
-            xref="paper", yref="paper",
-            x=0.02, y=0.98,
-            showarrow=False,
-            bgcolor="white",
-            bordercolor="black",
-            borderwidth=1
-        )
-        
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
+    # ライン別に散布図を表示
+    st.markdown("### ライン別分析")
+    st.info("💡 **各点はシフト単位の実績です。**スキルが高いラインほど生産効率が高く、品質不良率が低い傾向が確認できます。")
     
-    with col2:
-        # 散布図: スキルスコア vs 品質不良率
-        try:
-            # statsmodelsが利用可能な場合、トレンドライン付き
-            fig = px.scatter(
-                merged,
-                x='総合スキルスコア',
-                y='品質不良率',
-                color='ライン',
-                size='稼働率',
-                hover_data=['シフト'],
-                title="スキルスコア vs 品質不良率",
-                trendline="ols"
-            )
-        except (ModuleNotFoundError, ImportError):
-            # statsmodelsがない場合、トレンドラインなし
-            fig = px.scatter(
-                merged,
-                x='総合スキルスコア',
-                y='品質不良率',
-                color='ライン',
-                size='稼働率',
-                hover_data=['シフト'],
-                title="スキルスコア vs 品質不良率"
-            )
+    for line in lines:
+        st.markdown(f"#### {line}")
         
-        # 相関係数計算
-        corr, p_value = stats.pearsonr(merged['総合スキルスコア'], merged['品質不良率'])
+        # ラインのデータを抽出
+        line_data = merged[merged['ライン'] == line]
         
-        fig.add_annotation(
-            text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}",
-            xref="paper", yref="paper",
-            x=0.02, y=0.98,
-            showarrow=False,
-            bgcolor="white",
-            bordercolor="black",
-            borderwidth=1
-        )
+        # データが少なすぎる場合はスキップ
+        if len(line_data) < 2:
+            st.warning(f"⚠️ {line}のデータが不足しています（最低2シフト以上必要）")
+            continue
         
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 散布図: スキルスコア vs 生産効率
+            try:
+                # statsmodelsが利用可能な場合、トレンドライン付き
+                fig = px.scatter(
+                    line_data,
+                    x='総合スキルスコア',
+                    y='生産効率_指数',
+                    color='シフト',
+                    text='シフト',
+                    title=f"{line} - スキルスコア vs 生産効率",
+                    trendline="ols"
+                )
+            except (ModuleNotFoundError, ImportError):
+                # statsmodelsがない場合、トレンドラインなし
+                fig = px.scatter(
+                    line_data,
+                    x='総合スキルスコア',
+                    y='生産効率_指数',
+                    color='シフト',
+                    text='シフト',
+                    title=f"{line} - スキルスコア vs 生産効率"
+                )
+            
+            # 相関係数計算
+            if len(line_data) >= 2:
+                corr, p_value = stats.pearsonr(line_data['総合スキルスコア'], line_data['生産効率_指数'])
+                
+                fig.add_annotation(
+                    text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}",
+                    xref="paper", yref="paper",
+                    x=0.02, y=0.98,
+                    showarrow=False,
+                    bgcolor="white",
+                    bordercolor="black",
+                    borderwidth=1
+                )
+            
+            fig.update_traces(textposition='top center', marker=dict(size=12))
+            fig.update_layout(height=400, showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # 散布図: スキルスコア vs 品質不良率
+            try:
+                # statsmodelsが利用可能な場合、トレンドライン付き
+                fig = px.scatter(
+                    line_data,
+                    x='総合スキルスコア',
+                    y='品質不良率',
+                    color='シフト',
+                    text='シフト',
+                    title=f"{line} - スキルスコア vs 品質不良率",
+                    trendline="ols"
+                )
+            except (ModuleNotFoundError, ImportError):
+                # statsmodelsがない場合、トレンドラインなし
+                fig = px.scatter(
+                    line_data,
+                    x='総合スキルスコア',
+                    y='品質不良率',
+                    color='シフト',
+                    text='シフト',
+                    title=f"{line} - スキルスコア vs 品質不良率"
+                )
+            
+            # 相関係数計算
+            if len(line_data) >= 2:
+                corr, p_value = stats.pearsonr(line_data['総合スキルスコア'], line_data['品質不良率'])
+                
+                fig.add_annotation(
+                    text=f"相関係数: {corr:.3f}<br>p値: {p_value:.4f}",
+                    xref="paper", yref="paper",
+                    x=0.02, y=0.98,
+                    showarrow=False,
+                    bgcolor="white",
+                    bordercolor="black",
+                    borderwidth=1
+                )
+            
+            fig.update_traces(textposition='top center', marker=dict(size=12))
+            fig.update_layout(height=400, showlegend=True)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        st.markdown("---")
     
     # スキルカテゴリー別相関
     st.subheader("スキルカテゴリー別 相関係数マトリクス")
