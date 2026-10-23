@@ -544,7 +544,7 @@ def render_detailed_metrics(kpi):
                 return 'background-color: #f8d7da'
         return ''
     
-    styled_df = display_df.style.applymap(
+    styled_df = display_df.style.map(
         highlight_score,
         subset=['総合スコア', '効率指数', '品質指数', '安全指数']
     ).format({
